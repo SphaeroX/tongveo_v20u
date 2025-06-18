@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <title>Tongveo TV‑V20U PTZ Control</title>
+    <style>
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            margin: 20px;
+        }
+
+        #wrapper {
+            display: flex;
+            gap: 24px;
+            align-items: flex-start;
+        }
+
+        video {
+            width: 640px;
+            height: auto;
+            border: 1px solid #444;
+            border-radius: 4px;
+        }
+
+        #controls {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .btn-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        button {
+            padding: 8px 14px;
+            cursor: pointer;
+        }
+
+        kbd {
+            background: #eee;
+            padding: 2px 4px;
+            border-radius: 3px;
+            border: 1px solid #bbb;
+            font-size: 90%;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Tongveo TV‑V20U PTZ Control Panel</h1>
+    <p>Hold Pan/Tilt <kbd>←</kbd>/<kbd>→</kbd>, <kbd>↑</kbd>/<kbd>↓</kbd> | Zoom step-by-step <kbd>+</kbd>/<kbd>-</kbd>
+    </p>
+
+    <div id="wrapper">
+        <video id="video" autoplay playsinline></video>
+
+        <div id="controls">
+            <button id="serialConnect">Connect Serial (VISCA)</button>
+
+            <div class="btn-row">
+                <button id="zoomIn">Zoom +</button>
+                <button id="zoomOut">Zoom −</button>
+                <button id="panLeft">←</button>
+                <button id="panRight">→</button>
+                <button id="tiltUp">↑</button>
+                <button id="tiltDown">↓</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // -------------------------------------------------------------
+        // PTZ via WebRTC UVC when available, else VISCA via Web Serial
+        // -------------------------------------------------------------
+        let track, caps, writer;
+        const last = { zoom: 0, pan: 0, tilt: 0 };
+
+        /* ---------------- Camera init ---------------------------- */
+        async function openCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 1280, height: 720, pan: true, tilt: true, zoom: true }
+                });
+                document.getElementById('video').srcObject = stream;
+                [track] = stream.getVideoTracks();
+                caps = track.getCapabilities();
+                const s = track.getSettings();
+                if (caps?.zoom) last.zoom = s.zoom ?? 0;
+                if (caps?.pan) last.pan = s.pan ?? 0;
+                if (caps?.tilt) last.tilt = s.tilt ?? 0;
+            } catch (err) {
+                alert('Could not open camera: ' + err);
+            }
+        }
+
+        /* ---------------- Serial / VISCA helpers ------------------ */
+        async function connectSerial() {
+            try {
+                const port = await navigator.serial.requestPort();
+                await port.open({ baudRate: 9600 });
+                writer = port.writable.getWriter();
+                alert('Serial connected');
+            } catch (err) {
+                alert('Serial connection failed: ' + err);
+            }
+        }
+        function visca(bytes) {
+            if (!writer) { alert('Serial not connected'); return; }
+            writer.write(new Uint8Array(bytes));
+        }
+        // --- Zoom step (no continuous run) ---
+        function serialZoomStep(dir /* 'tele' | 'wide' */) {
+            const start = dir === 'tele' ? 0x20 : 0x30; // Tele/Wide
+            visca([0x81, 0x01, 0x04, 0x07, start, 0xFF]);   // start zoom
+            setTimeout(() => visca([0x81, 0x01, 0x04, 0x07, 0x00, 0xFF]), 60); // stop after 60 ms
+        }
+        // --- Pan/Tilt pulse helpers ---
+        function serialPanStep(dir) { // dir: 0x01 R, 0x02 L
+            visca([0x81, 0x01, 0x06, 0x01, 0x10, 0x00, dir, 0x03, 0xFF]);
+            setTimeout(() => visca([0x81, 0x01, 0x06, 0x01, 0x00, 0x00, 0x03, 0x03, 0xFF]), 100);
+        }
+        function serialTiltStep(dir) { // dir: 0x01 U, 0x02 D
+            visca([0x81, 0x01, 0x06, 0x01, 0x00, 0x10, 0x03, dir, 0xFF]);
+            setTimeout(() => visca([0x81, 0x01, 0x06, 0x01, 0x00, 0x00, 0x03, 0x03, 0xFF]), 100);
+        }
+
+        /* ---------------- Unified control ------------------------- */
+        function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
+        function adjust(name, delta) {
+            // UVC first (absolute positioning)
+            if (caps?.[name]) {
+                const min = caps[name].min, max = caps[name].max;
+                const newVal = clamp(last[name] + delta, min, max);
+                track.applyConstraints({ advanced: [{ [name]: newVal }] }).catch(console.error);
+                last[name] = newVal;
+                return;
+            }
+            // Serial relative fallback
+            if (!writer) return; // silent when not connected
+            if (name === 'zoom') serialZoomStep(delta > 0 ? 'tele' : 'wide');
+            else if (name === 'pan') serialPanStep(delta > 0 ? 0x01 : 0x02);
+            else if (name === 'tilt') serialTiltStep(delta > 0 ? 0x01 : 0x02);
+        }
+
+        /* ---------------- Buttons ------------------------------- */
+        document.getElementById('serialConnect').addEventListener('click', connectSerial);
+
+        document.getElementById('zoomIn').addEventListener('click', () => adjust('zoom', 1));
+        document.getElementById('zoomOut').addEventListener('click', () => adjust('zoom', -1));
+
+        ['panLeft', 'panRight', 'tiltUp', 'tiltDown'].forEach(id => {
+            const cfg = {
+                panLeft: { axis: 'pan', delta: -5 },
+                panRight: { axis: 'pan', delta: 5 },
+                tiltUp: { axis: 'tilt', delta: 5 },
+                tiltDown: { axis: 'tilt', delta: -5 }
+            }[id];
+            let timer;
+            const btn = document.getElementById(id);
+            btn.addEventListener('mousedown', () => {
+                adjust(cfg.axis, cfg.delta);
+                timer = setInterval(() => adjust(cfg.axis, cfg.delta), 120);
+            });
+            btn.addEventListener('mouseup', () => clearInterval(timer));
+            btn.addEventListener('mouseleave', () => clearInterval(timer));
+        });
+
+        /* ---------------- Hotkeys ------------------------------- */
+        const activeTimers = new Map();
+        const hotkeyMap = {
+            'ArrowLeft': { axis: 'pan', delta: -5, continuous: true },
+            'ArrowRight': { axis: 'pan', delta: 5, continuous: true },
+            'ArrowUp': { axis: 'tilt', delta: 5, continuous: true },
+            'ArrowDown': { axis: 'tilt', delta: -5, continuous: true },
+            '+': { axis: 'zoom', delta: 1, continuous: false },
+            '-': { axis: 'zoom', delta: -1, continuous: false }
+        };
+
+        document.addEventListener('keydown', e => {
+            const cfg = hotkeyMap[e.key];
+            if (!cfg) return;
+            if (cfg.continuous) {
+                if (activeTimers.has(e.key)) return;
+                adjust(cfg.axis, cfg.delta);
+                const id = setInterval(() => adjust(cfg.axis, cfg.delta), 120);
+                activeTimers.set(e.key, id);
+            } else {
+                adjust(cfg.axis, cfg.delta); // single step zoom
+            }
+        });
+
+        document.addEventListener('keyup', e => {
+            const id = activeTimers.get(e.key);
+            if (id) {
+                clearInterval(id);
+                activeTimers.delete(e.key);
+            }
+        });
+
+        window.addEventListener('blur', () => {
+            activeTimers.forEach(id => clearInterval(id));
+            activeTimers.clear();
+        });
+
+        openCamera();
+    </script>
+</body>
+
+</html>
