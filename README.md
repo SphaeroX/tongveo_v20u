@@ -26,9 +26,18 @@ The result is full PTZ control (including hotkeys) without installing proprietar
 
 ## Getting Started
 
+You can try this project in two ways:
+
+### Online Demo
+
+Try the application in your browser at https://sphaerox.github.io/tongveo_v20u
+**Note:** The online demo only supports camera preview. USB Serial PTZ control features are only available when running locally due to browser security restrictions.
+
+### Local Installation
+
 1. Clone or download this repository.
 2. Open **`tongveo_ptz_control.html`** in a Chromium‑based browser.
-   (The file can be served from any local web server or opened directly from disk.)
+   (The file can be served from any local web server or opened directly from disk.)
 3. Grant permission when the browser asks for camera access.
 4. Click **Connect Serial (VISCA)** and choose the USB‑serial port.
 5. Use the on‑screen buttons or the hotkeys:
