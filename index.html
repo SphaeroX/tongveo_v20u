@@ -642,6 +642,31 @@
 
                 // Click to Center
                 this.initClickToCenter();
+
+                // Mouse Wheel Zoom
+                this.initWheelZoom();
+            }
+
+            initWheelZoom() {
+                const container = this.videoElement.parentElement;
+                let zoomTimeout;
+
+                container.addEventListener('wheel', (e) => {
+                    e.preventDefault(); // Prevent page scrolling
+
+                    // Determine direction
+                    const direction = e.deltaY < 0 ? 1 : -1;
+
+                    // Execute zoom
+                    this.zoom(direction);
+
+                    // Debounce stop for VISCA (continuous move)
+                    // If UVC, this might be redundant but harmless as UVC is usually discrete steps in this impl
+                    clearTimeout(zoomTimeout);
+                    zoomTimeout = setTimeout(() => {
+                        this.stopZoom();
+                    }, 200); // 200ms delay before stopping
+                }, { passive: false });
             }
 
             initClickToCenter() {
