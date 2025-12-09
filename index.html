@@ -379,6 +379,16 @@
                     <input type="range" id="speedRange" min="1" max="24" value="12">
                 </div>
             </div>
+
+            <div class="panel-section">
+                <div style="display: flex; justify-content: space-between;">
+                    <span class="section-title">Click Sensitivity</span>
+                    <span id="sensValue" style="color: var(--primary-color); font-size: 0.8rem;">0.40</span>
+                </div>
+                <div class="slider-container">
+                    <input type="range" id="sensRange" min="0.1" max="3.0" step="0.05" value="0.4">
+                </div>
+            </div>
         </aside>
     </main>
 
@@ -402,6 +412,11 @@
                 this.panSpeed = 0x0C; // Default 12
                 this.tiltSpeed = 0x0C; // Default 12
                 this.zoomSpeed = 0x05; // Default 5
+
+                this.panSpeed = 0x0C; // Default 12
+                this.tiltSpeed = 0x0C; // Default 12
+                this.zoomSpeed = 0x05; // Default 5
+                this.sensitivity = 0.4; // Click movement multiplier
 
                 this.initUI();
                 this.initCameraHandling();
@@ -506,6 +521,15 @@
                     speedValue.innerText = val;
                 });
 
+                // Sensitivity Slider
+                const sensRange = document.getElementById('sensRange');
+                const sensValue = document.getElementById('sensValue');
+                sensRange.addEventListener('input', (e) => {
+                    const val = parseFloat(e.target.value);
+                    this.sensitivity = val;
+                    sensValue.innerText = val.toFixed(2);
+                });
+
                 // Keyboard Controls
                 document.addEventListener('keydown', (e) => {
                     if (e.repeat) return;
@@ -531,6 +555,80 @@
                             this.stopZoom(); break;
                     }
                 });
+
+                // Click to Center
+                this.initClickToCenter();
+            }
+
+            initClickToCenter() {
+                // Attach to parent container to ensure we catch clicks even if video has issues
+                const container = this.videoElement.parentElement;
+
+                container.addEventListener('dblclick', (e) => {
+                    console.log('Video Container Double-Clicked!'); // Debug log
+
+                    // Check if system is ready
+                    const isStreamActive = this.track && this.track.readyState === 'live';
+                    const isSerialConnected = !!this.writer;
+
+                    console.log(`Stream Active: ${isStreamActive}, Serial Connected: ${isSerialConnected}`);
+
+                    if (!isStreamActive && !isSerialConnected) {
+                        console.warn('Click ignored: No active stream or serial connection.');
+                        this.showToast('Start Camera or Connect Serial first', 'error');
+                        return;
+                    }
+
+                    const rect = this.videoElement.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+
+                    const centerX = rect.width / 2;
+                    const centerY = rect.height / 2;
+                    const dX = x - centerX;
+                    const dY = y - centerY;
+
+                    const scaleX = 15;
+                    const scaleY = 15;
+
+                    const panUnits = Math.round(dX * scaleX);
+                    const tiltUnits = Math.round(dY * scaleY) * -1;
+
+                    this.moveClickToCenter(dX, dY);
+                    this.showClickIndicator(e.clientX, e.clientY);
+                });
+            }
+
+            showClickIndicator(x, y) {
+                const indicator = document.createElement('div');
+                indicator.style.position = 'fixed';
+                indicator.style.left = (x - 10) + 'px';
+                indicator.style.top = (y - 10) + 'px';
+                indicator.style.width = '20px';
+                indicator.style.height = '20px';
+                indicator.style.border = '2px solid var(--primary-color)';
+                indicator.style.borderRadius = '50%';
+                indicator.style.pointerEvents = 'none';
+                indicator.style.zIndex = '9999';
+                indicator.style.animation = 'ping 1s cubic-bezier(0, 0, 0.2, 1) infinite';
+
+                // Add keyframes if not exists
+                if (!document.getElementById('ping-style')) {
+                    const style = document.createElement('style');
+                    style.id = 'ping-style';
+                    style.textContent = `
+                       @keyframes ping {
+                           75%, 100% {
+                               transform: scale(2);
+                               opacity: 0;
+                           }
+                       }
+                   `;
+                    document.head.appendChild(style);
+                }
+
+                document.body.appendChild(indicator);
+                setTimeout(() => indicator.remove(), 1000);
             }
 
             bindMomentary(id, startFn, stopFn) {
@@ -571,6 +669,134 @@
                     toast.style.transform = 'translateY(20px)';
                     setTimeout(() => toast.remove(), 300);
                 }, 3000);
+            }
+
+            // Helper to convert number to 4 nibbles for VISCA data
+            toNibbles(val) {
+                // VISCA data typically 16-bit signed or unsigned spread across 4 bytes as low nibbles.
+                // Or 0Y 0Y 0Y 0Y.
+                // Relative position is signed.
+                // 16-bit signed integer.
+                // Example: -1 = 0xFFFF. Nibbles: F F F F.
+
+                // Clamp to 16-bit signed range
+                const clamped = Math.min(Math.max(val, -32768), 32767);
+
+                // Convert to 16-bit unsigned representation
+                const u16 = new Uint16Array([clamped])[0];
+
+                const n1 = (u16 >> 12) & 0x0F;
+                const n2 = (u16 >> 8) & 0x0F;
+                const n3 = (u16 >> 4) & 0x0F;
+                const n4 = u16 & 0x0F;
+
+                return [n1, n2, n3, n4];
+            }
+
+            moveClickToCenter(dx, dy) {
+                console.log(`moveClickToCenter: dX=${dx}, dY=${dy}`);
+
+                // --- VISCA SERIAL LOGIC (Time-Based) ---
+                if (this.writer) {
+                    // Time-based movement fallback because RelativeMove (0x03) is often not supported.
+
+                    // Calibration: Milliseconds per Pixel
+                    // This is a rough heuristic. 
+                    // Assume Speed 12 (middle). 
+                    // Tuning: 1920px / 4000ms = 0.5 px/ms? -> 2 ms/px if Full Speed?
+                    // Let's rely on current speed setting. 
+                    // Higher speed = Lower ms/px.
+
+                    // Base Factor at Speed 12.
+                    const BASE_MS_PER_PX = 4; // reduced from 4 based on "too far" feedback? No, let sensitivity handle it.
+                    // Adjust by speed ratio (Speed 1 = Slow, Speed 24 = Fast)
+                    const speedRatio = Math.max(this.panSpeed, 1) / 12;
+
+                    const timeFactor = (BASE_MS_PER_PX / speedRatio) * this.sensitivity;
+
+                    const durX = Math.abs(dx * timeFactor);
+                    const durY = Math.abs(dy * timeFactor);
+
+                    // Invert mapping: User says Left/Right is swapped.
+                    // If dx > 0 (Click Right), we originally did 1 (Pan Right).
+                    // If that was wrong, we need -1 (Pan Left).
+                    const dirX = dx > 0 ? -1 : (dx < 0 ? 1 : 0);
+                    // Screen Y increases Down.
+                    // If Click is Lower (dy > 0), we want to look Down.
+                    // move(0, -1) is Down.
+                    // So dy > 0 -> dirY = -1.
+                    const dirY = dy > 0 ? -1 : (dy < 0 ? 1 : 0);
+
+                    if (dirX === 0 && dirY === 0) return;
+
+                    console.log(`TimeBased Move: Factor=${timeFactor.toFixed(2)}, T_X=${durX.toFixed(0)}ms, T_Y=${durY.toFixed(0)}ms`);
+
+                    // Sequential Logic: Pan then Tilt to avoid race conditions and ensure accuracy
+                    (async () => {
+                        if (dirX !== 0) {
+                            this.move(dirX, 0); // Pan only
+                            await new Promise(r => setTimeout(r, durX));
+                            this.stopMove(); // Stop Pan
+                            // Small delay to ensure command processed
+                            await new Promise(r => setTimeout(r, 100));
+                        }
+                        if (dirY !== 0) {
+                            this.move(0, dirY); // Tilt only
+                            await new Promise(r => setTimeout(r, durY));
+                            this.stopMove(); // Stop Tilt
+                        }
+                        this.showToast('Move complete', 'success');
+                    })();
+
+                    return;
+                }
+
+                // --- UVC LOGIC (Constraint Based) ---
+                if (this.track && this.capabilities) {
+                    const settings = this.track.getSettings();
+
+                    // Check support
+                    if (settings.pan === undefined && settings.tilt === undefined) {
+                        console.warn('UVC: Pan/Tilt settings not readable. Cannot perform relative move.');
+                        this.showToast('Browser cannot read cam position. Click-to-center unavailable for UVC.', 'error');
+                        return;
+                    }
+
+                    const constraints = { advanced: [] };
+                    let changed = false;
+                    let uvcPanRaw = 0;
+                    let uvcTiltRaw = 0;
+
+                    if (this.capabilities.pan && dx !== 0 && settings.pan !== undefined) {
+                        // 1px = ~130 units.
+                        const UVC_SCALE = 130 * this.sensitivity;
+                        const uvcDelta = dx * UVC_SCALE;
+                        uvcPanRaw = settings.pan + uvcDelta;
+                        constraints.advanced.push({ pan: uvcPanRaw });
+                        changed = true;
+                    }
+
+                    if (this.capabilities.tilt && dy !== 0 && settings.tilt !== undefined) {
+                        const UVC_SCALE = 130 * this.sensitivity;
+                        const uvcDelta = dy * UVC_SCALE;
+                        // Invert dy for Tilt if Camera + is Up
+                        uvcTiltRaw = settings.tilt - uvcDelta;
+                        constraints.advanced.push({ tilt: uvcTiltRaw });
+                        changed = true;
+                    }
+
+                    if (changed) {
+                        console.log(`UVC Move: PanTo ${uvcPanRaw}, TiltTo ${uvcTiltRaw}`);
+                        this.track.applyConstraints(constraints)
+                            .then(() => this.showToast('Adjusting view...', 'info'))
+                            .catch(e => {
+                                console.error('UVC Move fail', e);
+                                this.showToast('Camera rejected resize command', 'error');
+                            });
+                    } else {
+                        this.showToast('UVC Pan/Tilt not supported or range limit reached', 'error');
+                    }
+                }
             }
 
             async openStream(deviceId) {
