@@ -253,6 +253,23 @@
             background: currentColor;
         }
     </style>
+    <style>
+        /* ... existing styles ... */
+
+        #detectionCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: auto;
+            /* Allow clicks */
+            z-index: 10;
+        }
+    </style>
+    <!-- TensorFlow.js and Coco-SSD -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
 </head>
 
 <body>
@@ -282,6 +299,7 @@
                 <button class="primary" onclick="cameraManager.openStream()">Start Camera</button>
             </div>
             <video id="videoElement" autoplay playsinline></video>
+            <canvas id="detectionCanvas"></canvas>
         </div>
 
         <aside class="controls-panel">
@@ -389,6 +407,29 @@
                     <input type="range" id="sensRange" min="0.1" max="3.0" step="0.05" value="0.4">
                 </div>
             </div>
+
+            <div class="panel-section">
+                <span class="section-title">Intelligent Tracking</span>
+                <button id="btnAutoFollow">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z">
+                        </path>
+                        <path d="M12 9v6m-3-3h6"></path>
+                    </svg>
+                    Auto Follow Off
+                </button>
+
+                <div style="display: flex; justify-content: space-between; margin-top: 8px;">
+                    <span class="section-title">Threshold</span>
+                    <span id="threshValue" style="color: var(--primary-color); font-size: 0.8rem;">0.60</span>
+                </div>
+                <div class="slider-container">
+                    <input type="range" id="threshRange" min="0.1" max="1.0" step="0.05" value="0.6">
+                </div>
+                <!-- Status for loading model -->
+                <div id="modelStatus" style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">Model not
+                    loaded</div>
+            </div>
         </aside>
     </main>
 
@@ -418,8 +459,36 @@
                 this.zoomSpeed = 0x05; // Default 5
                 this.sensitivity = 0.4; // Click movement multiplier
 
+                // Auto Follow State
+                this.isAutoFollow = false;
+                this.model = null;
+                this.predictions = [];
+                this.trackedObject = null; // { class: 'person', x, y, width, height }
+                this.isTracking = false;
+                this.detectionInterval = null;
+                this.confidentThreshold = 0.6;
+                this.canvas = document.getElementById('detectionCanvas');
+                this.ctx = this.canvas.getContext('2d');
+
                 this.initUI();
                 this.initCameraHandling();
+
+                // Lazy load model
+                this.loadModel();
+            }
+
+            async loadModel() {
+                try {
+                    const status = document.getElementById('modelStatus');
+                    status.innerText = 'Loading AI Model...';
+                    this.model = await cocoSsd.load();
+                    status.innerText = 'Model Ready';
+                    status.style.color = 'var(--success-color)';
+                    console.log('Coco-SSD loaded');
+                } catch (e) {
+                    console.error('Model load failed', e);
+                    document.getElementById('modelStatus').innerText = 'Model Failed Load';
+                }
             }
 
             initCameraHandling() {
@@ -529,6 +598,21 @@
                     this.sensitivity = val;
                     sensValue.innerText = val.toFixed(2);
                 });
+
+                // Auto Follow Controls
+                const btnAutoFollow = document.getElementById('btnAutoFollow');
+                btnAutoFollow.addEventListener('click', () => this.toggleAutoFollow());
+
+                const threshRange = document.getElementById('threshRange');
+                const threshValue = document.getElementById('threshValue');
+                threshRange.addEventListener('input', (e) => {
+                    const val = parseFloat(e.target.value);
+                    this.confidentThreshold = val;
+                    threshValue.innerText = val.toFixed(2);
+                });
+
+                // Canvas Click for selection
+                this.canvas.addEventListener('click', (e) => this.handleCanvasClick(e));
 
                 // Keyboard Controls
                 document.addEventListener('keydown', (e) => {
@@ -963,6 +1047,232 @@
                 if (this.writer) {
                     // Home: 81 01 06 04 FF
                     this.sendVisca([0x81, 0x01, 0x06, 0x04, 0xFF]);
+                }
+            }
+
+            // --- Auto Follow Logic ---
+
+            toggleAutoFollow() {
+                if (!this.model) {
+                    this.showToast('Model not loaded yet', 'error');
+                    return;
+                }
+
+                this.isAutoFollow = !this.isAutoFollow;
+                const btn = document.getElementById('btnAutoFollow');
+
+                if (this.isAutoFollow) {
+                    btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg> Auto Follow ON`;
+                    btn.classList.add('primary');
+                    this.startDetectionLoop();
+                    this.showToast('Auto Follow Active. Click a box to track.', 'success');
+                } else {
+                    btn.innerHTML = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><path d="M12 9v6m-3-3h6"></path></svg> Auto Follow Off`;
+                    btn.classList.remove('primary');
+                    this.stopDetectionLoop();
+                    this.trackedObject = null;
+                    this.isTracking = false;
+                    this.canvas.width = this.canvas.width; // Clear
+                }
+            }
+
+            startDetectionLoop() {
+                const loop = async () => {
+                    if (!this.isAutoFollow) return;
+
+                    if (this.videoElement.readyState === 4) {
+                        try {
+                            // Ensure canvas matches video size
+                            if (this.canvas.width !== this.videoElement.offsetWidth || this.canvas.height !== this.videoElement.offsetHeight) {
+                                this.canvas.width = this.videoElement.offsetWidth;
+                                this.canvas.height = this.videoElement.offsetHeight;
+                            }
+
+                            // Detect
+                            const predictions = await this.model.detect(this.videoElement);
+                            this.predictions = predictions.filter(p => p.score >= this.confidentThreshold);
+
+                            this.drawPredictions();
+                            this.processTracking();
+
+                        } catch (err) {
+                            console.warn('Detection error', err);
+                        }
+                    }
+
+                    this.detectionAnimationFrame = requestAnimationFrame(loop);
+                };
+                loop();
+            }
+
+            stopDetectionLoop() {
+                if (this.detectionAnimationFrame) {
+                    cancelAnimationFrame(this.detectionAnimationFrame);
+                }
+            }
+
+            drawPredictions() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+                this.predictions.forEach(p => {
+                    const [x, y, width, height] = p.bbox;
+
+                    // Scale if video intrinsic size differs from display size
+                    // model.detect uses video intrinsic.
+                    const scaleX = this.canvas.width / this.videoElement.videoWidth;
+                    const scaleY = this.canvas.height / this.videoElement.videoHeight;
+
+                    const rectX = x * scaleX;
+                    const rectY = y * scaleY;
+                    const rectW = width * scaleX;
+                    const rectH = height * scaleY;
+
+                    // Check if this is the tracked object
+                    let isTracked = false;
+                    if (this.trackedObject) {
+                        // Simple IoU or center distance check to maintain identity
+                        // Here we use class check + minimal distance
+                        if (p.class === this.trackedObject.class) {
+                            // Calculate distance
+                            // Simplified: Tracking relies on re-assignment in processTracking
+                        }
+                    }
+
+                    // Style
+                    this.ctx.lineWidth = 2;
+                    if (this.trackedObject && this.isTracking && this.isSameObject(p, this.trackedObject)) {
+                        this.ctx.strokeStyle = '#10B981'; // Green for tracked
+                        this.ctx.fillStyle = 'rgba(16, 185, 129, 0.2)';
+                    } else {
+                        this.ctx.strokeStyle = '#3B82F6'; // Blue for others
+                        this.ctx.fillStyle = 'rgba(59, 130, 246, 0.1)';
+                    }
+
+                    this.ctx.beginPath();
+                    this.ctx.rect(rectX, rectY, rectW, rectH);
+                    this.ctx.stroke();
+                    this.ctx.fill();
+
+                    // Label
+                    this.ctx.fillStyle = 'white';
+                    this.ctx.font = '12px Inter';
+                    this.ctx.fillText(`${p.class} ${Math.round(p.score * 100)}%`, rectX, rectY > 10 ? rectY - 5 : 10);
+                });
+            }
+
+            handleCanvasClick(e) {
+                if (!this.isAutoFollow) return;
+
+                const rect = this.canvas.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                const clickY = e.clientY - rect.top;
+
+                // Find clicked box
+                // Need to map click space to prediction space (scaled)
+                const scaleX = this.canvas.width / this.videoElement.videoWidth;
+                const scaleY = this.canvas.height / this.videoElement.videoHeight;
+
+                for (let p of this.predictions) {
+                    const [x, y, w, h] = p.bbox;
+                    const rx = x * scaleX;
+                    const ry = y * scaleY;
+                    const rw = w * scaleX;
+                    const rh = h * scaleY;
+
+                    if (clickX >= rx && clickX <= rx + rw && clickY >= ry && clickY <= ry + rh) {
+                        this.trackedObject = p;
+                        this.isTracking = true;
+                        this.showToast(`Tracking ${p.class}`, 'success');
+                        return;
+                    }
+                }
+
+                // If clicked empty space
+                this.trackedObject = null;
+                this.isTracking = false;
+            }
+
+            isSameObject(p1, p2) {
+                if (!p1 || !p2) return false;
+                // Heuristic: Same class and centers are close
+                if (p1.class !== p2.class) return false;
+
+                const c1 = this.getCenter(p1.bbox);
+                const c2 = this.getCenter(p2.bbox);
+                const dist = Math.hypot(c1.x - c2.x, c1.y - c2.y);
+
+                // If moved less than 100 pixels (video relative)
+                return dist < 150;
+            }
+
+            getCenter(bbox) {
+                return { x: bbox[0] + bbox[2] / 2, y: bbox[1] + bbox[3] / 2 };
+            }
+
+            processTracking() {
+                if (!this.isTracking || !this.trackedObject) return;
+
+                // 1. Find the current position of the tracked object among new predictions
+                let bestMatch = null;
+                let minDist = Infinity;
+
+                for (let p of this.predictions) {
+                    if (p.class === this.trackedObject.class) {
+                        const dist = Math.hypot(
+                            this.getCenter(p.bbox).x - this.getCenter(this.trackedObject.bbox).x,
+                            this.getCenter(p.bbox).y - this.getCenter(this.trackedObject.bbox).y
+                        );
+                        if (dist < minDist) {
+                            minDist = dist;
+                            bestMatch = p;
+                        }
+                    }
+                }
+
+                if (bestMatch && minDist < 200) { // Lost threshold
+                    this.trackedObject = bestMatch; // Update content
+                } else {
+                    // Object lost temporarily or moved too fast
+                    // Keep old reference or stop? Let's keep for a bit but maybe don't move
+                    // For now, if lost, stop moving
+                    this.stopMove();
+                    return;
+                }
+
+                // 2. Calculate Error from Center
+                const pCenter = this.getCenter(this.trackedObject.bbox);
+                const vCenter = { x: this.videoElement.videoWidth / 2, y: this.videoElement.videoHeight / 2 };
+
+                const errX = pCenter.x - vCenter.x;
+                const errY = pCenter.y - vCenter.y; // Positive = Object is below center (screen Y is down)
+
+                // 3. Control Logic
+                // Deadband
+                const deadbandX = this.videoElement.videoWidth * 0.1; // 10%
+                const deadbandY = this.videoElement.videoHeight * 0.1;
+
+                let moveX = 0;
+                let moveY = 0;
+
+                if (Math.abs(errX) > deadbandX) {
+                    moveX = errX > 0 ? -1 : 1;
+                }
+                if (Math.abs(errY) > deadbandY) {
+                    moveY = errY > 0 ? -1 : 1;
+                }
+
+                // Optimization: Only send command if direction changes
+                if (moveX !== (this.lastMoveX || 0) || moveY !== (this.lastMoveY || 0)) {
+                    this.lastMoveX = moveX;
+                    this.lastMoveY = moveY;
+
+                    if (moveX !== 0 || moveY !== 0) {
+                        console.log(`AutoTracker: Move ${moveX}, ${moveY}`);
+                        this.move(moveX, moveY);
+                    } else {
+                        console.log('AutoTracker: Stop');
+                        this.stopMove();
+                    }
                 }
             }
         }
