@@ -3,210 +3,751 @@
 
 <head>
     <meta charset="utf-8" />
-    <title>Tongveo TV‑V20U PTZ Control</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tongveo Commander</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
-        body {
-            font-family: Arial, Helvetica, sans-serif;
-            margin: 20px;
+        :root {
+            --bg-color: #121212;
+            --surface-color: #1E1E1E;
+            --primary-color: #3B82F6;
+            --primary-hover: #2563EB;
+            --text-color: #E2E8F0;
+            --text-muted: #94A3B8;
+            --danger-color: #EF4444;
+            --success-color: #10B981;
+            --glass-bg: rgba(30, 30, 30, 0.7);
+            --glass-border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        #wrapper {
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            height: 100vh;
             display: flex;
-            gap: 24px;
-            align-items: flex-start;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 24px;
+            background: var(--surface-color);
+            border-bottom: var(--glass-border);
+        }
+
+        h1 {
+            margin: 0;
+            font-size: 1.25rem;
+            font-weight: 600;
+            letter-spacing: -0.025em;
+        }
+
+        /* Main Layout */
+        main {
+            flex: 1;
+            display: grid;
+            grid-template-columns: 1fr 320px;
+            gap: 20px;
+            padding: 20px;
+            height: calc(100vh - 70px);
+            box-sizing: border-box;
+        }
+
+        /* Video Area */
+        .video-container {
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: var(--glass-border);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
         }
 
         video {
-            width: 640px;
-            height: auto;
-            border: 1px solid #444;
-            border-radius: 4px;
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
         }
 
-        #controls {
+        .no-video-placeholder {
+            position: absolute;
+            color: var(--text-muted);
             display: flex;
             flex-direction: column;
-            gap: 16px;
+            align-items: center;
+            gap: 10px;
         }
 
-        .btn-row {
+        /* Controls Sidebar */
+        .controls-panel {
+            background: var(--surface-color);
+            border-radius: 12px;
+            border: var(--glass-border);
+            padding: 20px;
             display: flex;
-            flex-wrap: wrap;
+            flex-direction: column;
+            gap: 24px;
+            overflow-y: auto;
+        }
+
+        .panel-section {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .section-title {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        /* Buttons & Inputs */
+        button {
+            background: var(--surface-color);
+            border: var(--glass-border);
+            color: var(--text-color);
+            padding: 10px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
             gap: 8px;
         }
 
-        button {
-            padding: 8px 14px;
-            cursor: pointer;
+        button:hover {
+            background: #2D2D2D;
+            border-color: rgba(255, 255, 255, 0.2);
         }
 
-        kbd {
-            background: #eee;
-            padding: 2px 4px;
-            border-radius: 3px;
-            border: 1px solid #bbb;
-            font-size: 90%;
+        button:active {
+            transform: translateY(1px);
+        }
+
+        button.primary {
+            background: var(--primary-color);
+            border-color: transparent;
+        }
+
+        button.primary:hover {
+            background: var(--primary-hover);
+        }
+
+        button.icon-btn {
+            padding: 12px;
+        }
+
+        /* D-Pad / Joystick Area */
+        .d-pad {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            aspect-ratio: 1;
+            max-width: 200px;
+            margin: 0 auto;
+        }
+
+        .d-pad button {
+            height: 100%;
+            border-radius: 12px;
+            font-size: 1.5rem;
+        }
+
+        /* Zoom Controls */
+        .zoom-controls {
+            display: flex;
+            gap: 10px;
+        }
+
+        .zoom-controls button {
+            flex: 1;
+        }
+
+        /* Speed Control */
+        .slider-container {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            accent-color: var(--primary-color);
+        }
+
+        /* Status Toast */
+        #toast-container {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 1000;
+        }
+
+        .toast {
+            background: rgba(30, 30, 30, 0.9);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 50px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            font-size: 0.875rem;
+            animation: slideUp 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(20px);
+                opacity: 0;
+            }
+
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        /* Connection Status Indicator */
+        .status-badge {
+            font-size: 0.75rem;
+            padding: 4px 8px;
+            border-radius: 999px;
+            background: #2d2d2d;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-badge.connected {
+            background: rgba(16, 185, 129, 0.2);
+            color: #34D399;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
         }
     </style>
 </head>
 
 <body>
-    <h1>Tongveo TV‑V20U PTZ Control Panel</h1>
-    <p>Hold Pan/Tilt <kbd>←</kbd>/<kbd>→</kbd>, <kbd>↑</kbd>/<kbd>↓</kbd> | Zoom step-by-step <kbd>+</kbd>/<kbd>-</kbd>
-    </p>
 
-    <div id="wrapper">
-        <video id="video" autoplay playsinline></video>
-
-        <div id="controls">
-            <button id="serialConnect">Connect Serial (VISCA)</button>
-
-            <div class="btn-row">
-                <button id="zoomIn">Zoom +</button>
-                <button id="zoomOut">Zoom −</button>
-                <button id="panLeft">←</button>
-                <button id="panRight">→</button>
-                <button id="tiltUp">↑</button>
-                <button id="tiltDown">↓</button>
-            </div>
+    <header>
+        <div style="display: flex; align-items: center; gap: 12px;">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                <circle cx="12" cy="13" r="4"></circle>
+            </svg>
+            <h1>Tongveo Commander</h1>
         </div>
-    </div>
+        <div class="status-badge" id="serialStatus">
+            <div class="status-dot"></div>
+            <span id="serialStatusText">Serial Disconnected</span>
+        </div>
+    </header>
+
+    <main>
+        <div class="video-container">
+            <div class="no-video-placeholder" id="videoPlaceholder">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M23 7l-7 5 7 5V7z"></path>
+                    <rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect>
+                </svg>
+                <span>Camera Stream not active</span>
+                <button class="primary" onclick="cameraManager.openStream()">Start Camera</button>
+            </div>
+            <video id="videoElement" autoplay playsinline></video>
+        </div>
+
+        <aside class="controls-panel">
+            <div class="panel-section">
+                <span class="section-title">Camera Source</span>
+                <select id="cameraSelector"
+                    style="width: 100%; padding: 8px; border-radius: 8px; background: var(--bg-color); color: var(--text-color); border: var(--glass-border);">
+                    <option value="" disabled selected>Searching cameras...</option>
+                </select>
+            </div>
+
+            <button id="btnConnect" class="primary">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                </svg>
+                Connect VISCA Serial
+            </button>
+
+            <div class="panel-section">
+                <span class="section-title">PTZ Control</span>
+                <div class="d-pad">
+                    <!-- Top Row -->
+                    <button></button> <!-- Corner -->
+                    <button id="btnUp" class="primary" title="Tilt Up">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M18 15l-6-6-6 6" />
+                        </svg>
+                    </button>
+                    <button></button> <!-- Corner -->
+
+                    <!-- Middle Row -->
+                    <button id="btnLeft" class="primary" title="Pan Left">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M15 18l-6-6 6-6" />
+                        </svg>
+                    </button>
+                    <button id="btnHome" title="Home Position">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                            <polyline points="9 22 9 12 15 12 15 22" />
+                        </svg>
+                    </button>
+                    <button id="btnRight" class="primary" title="Pan Right">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M9 18l6-6-6-6" />
+                        </svg>
+                    </button>
+
+                    <!-- Bottom Row -->
+                    <button></button> <!-- Corner -->
+                    <button id="btnDown" class="primary" title="Tilt Down">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <path d="M6 9l6 6 6-6" />
+                        </svg>
+                    </button>
+                    <button></button> <!-- Corner -->
+                </div>
+            </div>
+
+            <div class="panel-section">
+                <span class="section-title">Zoom</span>
+                <div class="zoom-controls">
+                    <button id="btnZoomOut">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <circle cx="11" cy="11" r="8" />
+                            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                            <line x1="8" y1="11" x2="14" y2="11" />
+                        </svg>
+                    </button>
+                    <button id="btnZoomIn">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2">
+                            <circle cx="11" cy="11" r="8" />
+                            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                            <line x1="11" y1="8" x2="11" y2="14" />
+                            <line x1="8" y1="11" x2="14" y2="11" />
+                        </svg>
+                    </button>
+                </div>
+            </div>
+
+            <div class="panel-section">
+                <div style="display: flex; justify-content: space-between;">
+                    <span class="section-title">Speed</span>
+                    <span id="speedValue" style="color: var(--primary-color); font-size: 0.8rem;">12</span>
+                </div>
+                <div class="slider-container">
+                    <input type="range" id="speedRange" min="1" max="24" value="12">
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <div id="toast-container"></div>
 
     <script>
-        // -------------------------------------------------------------
-        // PTZ via WebRTC UVC when available, else VISCA via Web Serial
-        // -------------------------------------------------------------
-        let track, caps, writer;
-        const last = { zoom: 0, pan: 0, tilt: 0 };
+        /**
+         * Tongveo Camera Manager
+         * Handles both UVC (USB Video Class) and VISCA over Serial control.
+         */
+        class CameraManager {
+            constructor() {
+                this.videoElement = document.getElementById('videoElement');
+                this.writer = null;
+                this.port = null;
+                this.track = null;
+                this.capabilities = null;
 
-        /* ---------------- Camera init ---------------------------- */
-        async function openCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    video: { width: 1280, height: 720, pan: true, tilt: true, zoom: true }
+                // VISCA Pan/Tilt speeds are 0x01 to 0x18 (1-24)
+                // VISCA Zoom speeds are 0x00 to 0x07 (0-7)
+                this.panSpeed = 0x0C; // Default 12
+                this.tiltSpeed = 0x0C; // Default 12
+                this.zoomSpeed = 0x05; // Default 5
+
+                this.initUI();
+                this.initCameraHandling();
+            }
+
+            initCameraHandling() {
+                this.populateCameraList();
+
+                // Listen for device changes
+                navigator.mediaDevices.addEventListener('devicechange', () => {
+                    this.populateCameraList({ autoSelect: true });
                 });
-                document.getElementById('video').srcObject = stream;
-                [track] = stream.getVideoTracks();
-                caps = track.getCapabilities();
-                const s = track.getSettings();
-                if (caps?.zoom) last.zoom = s.zoom ?? 0;
-                if (caps?.pan) last.pan = s.pan ?? 0;
-                if (caps?.tilt) last.tilt = s.tilt ?? 0;
-            } catch (err) {
-                alert('Could not open camera: ' + err);
+
+                // Handle manual selection
+                document.getElementById('cameraSelector').addEventListener('change', (e) => {
+                    if (e.target.value) {
+                        this.openStream(e.target.value);
+                    }
+                });
+            }
+
+            async populateCameraList({ autoSelect = false } = {}) {
+                try {
+                    const devices = await navigator.mediaDevices.enumerateDevices();
+                    const videoDevices = devices.filter(d => d.kind === 'videoinput');
+                    const selector = document.getElementById('cameraSelector');
+
+                    // Save current selection if possible
+                    const currentId = selector.value;
+
+                    selector.innerHTML = '<option value="" disabled>Select Camera</option>';
+
+                    let bestDeviceId = null;
+                    let priorityFound = false;
+
+                    videoDevices.forEach(device => {
+                        const option = document.createElement('option');
+                        option.value = device.deviceId;
+                        option.text = device.label || `Camera ${selector.length}`;
+                        selector.appendChild(option);
+
+                        // Priority logic: Look for "Tongveo", "PTZ", or "USB"
+                        const label = (device.label || '').toLowerCase();
+                        if (label.includes('tongveo') || label.includes('ptz') || label.includes('conference') || label.includes('usb')) {
+                            if (!priorityFound) {
+                                bestDeviceId = device.deviceId;
+                                priorityFound = true; // First priority match wins
+                            }
+                        } else if (!bestDeviceId && !priorityFound) {
+                            bestDeviceId = device.deviceId; // Fallback to first device
+                        }
+                    });
+
+                    if (videoDevices.length === 0) {
+                        selector.innerHTML = '<option value="" disabled selected>No cameras found</option>';
+                        return;
+                    }
+
+                    // Auto-select logic
+                    if (autoSelect || !this.track || this.track.readyState !== 'live') {
+                        if (bestDeviceId) {
+                            selector.value = bestDeviceId;
+                            console.log('Auto-selecting camera:', bestDeviceId);
+                            this.openStream(bestDeviceId);
+                        }
+                    } else {
+                        // Restore selection visual if we are already playing that device
+                        if (currentId && Array.from(selector.options).some(o => o.value === currentId)) {
+                            selector.value = currentId;
+                        }
+                    }
+
+                } catch (error) {
+                    console.error('Error populating cameras:', error);
+                }
+            }
+
+            initUI() {
+                // Serial Connect
+                document.getElementById('btnConnect').addEventListener('click', () => this.connectSerial());
+
+                // PTZ Buttons (MouseDown/Up for continuous movement)
+                this.bindMomentary('btnUp', () => this.move(0, 1), () => this.stopMove());
+                this.bindMomentary('btnDown', () => this.move(0, -1), () => this.stopMove());
+                this.bindMomentary('btnLeft', () => this.move(-1, 0), () => this.stopMove());
+                this.bindMomentary('btnRight', () => this.move(1, 0), () => this.stopMove());
+
+                // Zoom Buttons
+                this.bindMomentary('btnZoomIn', () => this.zoom(1), () => this.stopZoom());
+                this.bindMomentary('btnZoomOut', () => this.zoom(-1), () => this.stopZoom());
+
+                // Home
+                document.getElementById('btnHome').addEventListener('click', () => this.home());
+
+                // Speed Slider
+                const speedRange = document.getElementById('speedRange');
+                const speedValue = document.getElementById('speedValue');
+                speedRange.addEventListener('input', (e) => {
+                    const val = parseInt(e.target.value);
+                    this.panSpeed = val;
+                    this.tiltSpeed = val; // Sync for simplicity
+                    speedValue.innerText = val;
+                });
+
+                // Keyboard Controls
+                document.addEventListener('keydown', (e) => {
+                    if (e.repeat) return;
+                    switch (e.key) {
+                        case 'ArrowUp': this.move(0, 1); break;
+                        case 'ArrowDown': this.move(0, -1); break;
+                        case 'ArrowLeft': this.move(-1, 0); break;
+                        case 'ArrowRight': this.move(1, 0); break;
+                        case '+': this.zoom(1); break;
+                        case '-': this.zoom(-1); break;
+                    }
+                });
+
+                document.addEventListener('keyup', (e) => {
+                    switch (e.key) {
+                        case 'ArrowUp':
+                        case 'ArrowDown':
+                        case 'ArrowLeft':
+                        case 'ArrowRight':
+                            this.stopMove(); break;
+                        case '+':
+                        case '-':
+                            this.stopZoom(); break;
+                    }
+                });
+            }
+
+            bindMomentary(id, startFn, stopFn) {
+                const btn = document.getElementById(id);
+                if (!btn) return;
+
+                const startHandler = (e) => {
+                    e.preventDefault();
+                    startFn();
+                };
+                const stopHandler = (e) => {
+                    e.preventDefault();
+                    stopFn();
+                };
+
+                btn.addEventListener('mousedown', startHandler);
+                btn.addEventListener('mouseup', stopHandler);
+                btn.addEventListener('mouseleave', stopHandler); // Stop if mouse leaves button
+
+                // Touch support
+                btn.addEventListener('touchstart', startHandler);
+                btn.addEventListener('touchend', stopHandler);
+            }
+
+            showToast(msg, type = 'info') {
+                const container = document.getElementById('toast-container');
+                const toast = document.createElement('div');
+                toast.className = 'toast';
+
+                let icon = '';
+                if (type === 'error') icon = '<svg width="16" height="16" fill="#EF4444" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path stroke="white" stroke-width="2" d="M12 8v4m0 4h.01"/></svg>';
+                else if (type === 'success') icon = '<svg width="16" height="16" fill="#10B981" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5" stroke="white" stroke-width="2" fill="none"/></svg>';
+
+                toast.innerHTML = `${icon}<span>${msg}</span>`;
+                container.appendChild(toast);
+                setTimeout(() => {
+                    toast.style.opacity = '0';
+                    toast.style.transform = 'translateY(20px)';
+                    setTimeout(() => toast.remove(), 300);
+                }, 3000);
+            }
+
+            async openStream(deviceId) {
+                const constraints = {
+                    width: 1920, height: 1080,
+                    pan: true, tilt: true, zoom: true
+                };
+
+                if (deviceId) {
+                    constraints.deviceId = { exact: deviceId };
+                }
+
+                const start = async (consts) => {
+                    if (this.track) {
+                        this.track.stop(); // Stop previous
+                    }
+
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: consts
+                    });
+                    this.videoElement.srcObject = stream;
+                    document.getElementById('videoPlaceholder').style.display = 'none';
+
+                    const [track] = stream.getVideoTracks();
+                    this.track = track;
+                    this.capabilities = track.getCapabilities();
+
+                    this.showToast('Camera active: ' + (track.label || 'Generic'), 'success');
+                };
+
+                try {
+                    try {
+                        await start(constraints);
+                    } catch (e) {
+                        console.warn('1080p failed or specific device failed, retrying with lower res...', e);
+                        const fallbackConstraints = { ...constraints, width: 1280, height: 720 };
+                        await start(fallbackConstraints);
+                    }
+                } catch (err) {
+                    console.error(err);
+                    this.showToast('Could not open camera: ' + err.message, 'error');
+                }
+            }
+
+            async connectSerial() {
+                if (!navigator.serial) {
+                    this.showToast('Web Serial API not supported in this browser.', 'error');
+                    return;
+                }
+                try {
+                    this.port = await navigator.serial.requestPort();
+                    await this.port.open({ baudRate: 9600 });
+                    this.writer = this.port.writable.getWriter();
+
+                    document.getElementById('serialStatus').classList.add('connected');
+                    document.getElementById('serialStatusText').innerText = 'Serial Connected';
+                    this.showToast('Serial connected successfully', 'success');
+                } catch (err) {
+                    console.error(err);
+                    this.showToast('Serial connection failed: ' + err.message, 'error');
+                }
+            }
+
+            async sendVisca(bytes) {
+                if (!this.writer) return;
+                try {
+                    await this.writer.write(new Uint8Array(bytes));
+                } catch (err) {
+                    console.error('VISCA Write Error', err);
+                    this.showToast('Send error: ' + err.message, 'error');
+                }
+            }
+
+            // Command Implementations
+
+            move(x, y) {
+                // x: -1 (left) to 1 (right)
+                // y: -1 (down) to 1 (up)
+
+                if (this.writer) {
+                    // Serial VISCA
+                    // Pan/Tilt Drive: 8x 01 06 01 VV WW 03 01 FF (Up)
+                    // VV=Pan Speed, WW=Tilt Speed
+                    // Payload: 81 01 06 01 VV WW XX YY FF
+                    // XX: 01=Left, 02=Right, 03=Stop
+                    // YY: 01=Up, 02=Down, 03=Stop
+
+                    let panDir = 0x03;
+                    let tiltDir = 0x03;
+
+                    if (x < 0) panDir = 0x01; // Left
+                    if (x > 0) panDir = 0x02; // Right
+
+                    if (y > 0) tiltDir = 0x01; // Up
+                    if (y < 0) tiltDir = 0x02; // Down
+
+                    const pSpeed = Math.min(Math.max(this.panSpeed, 1), 24);
+                    const tSpeed = Math.min(Math.max(this.tiltSpeed, 1), 24);
+
+                    this.sendVisca([0x81, 0x01, 0x06, 0x01, pSpeed, tSpeed, panDir, tiltDir, 0xFF]);
+                } else if (this.track && this.capabilities && (this.capabilities.pan || this.capabilities.tilt)) {
+                    // fallback to UVC if no serial
+                    // UVC doesn't support smooth continuous drive usually via standard constraints easily without a stepped loop
+                    // But we will try to increment if supported
+                    // This is less precise than VISCA
+                    const settings = this.track.getSettings();
+                    const constraints = { advanced: [] };
+                    let changed = false;
+
+                    if (this.capabilities.pan && x !== 0) {
+                        const current = settings.pan || 0;
+                        const step = 3600; // arbitrary step
+                        constraints.advanced.push({ pan: current + (x * step) });
+                        changed = true;
+                    }
+                    if (this.capabilities.tilt && y !== 0) {
+                        const current = settings.tilt || 0;
+                        const step = 3600;
+                        constraints.advanced.push({ tilt: current + (y * step) });
+                        changed = true;
+                    }
+                    if (changed) this.track.applyConstraints(constraints).catch(e => console.log('UVC Move fail', e));
+                }
+            }
+
+            stopMove() {
+                if (this.writer) {
+                    // Stop: 81 01 06 01 VV WW 03 03 FF
+                    const pSpeed = this.panSpeed;
+                    const tSpeed = this.tiltSpeed;
+                    this.sendVisca([0x81, 0x01, 0x06, 0x01, pSpeed, tSpeed, 0x03, 0x03, 0xFF]);
+                }
+            }
+
+            zoom(dir) {
+                // dir: 1 (in/tele), -1 (out/wide)
+                if (this.writer) {
+                    // Zoom: 8x 01 04 07 2p FF (Tele Standard) / 3p (Wide Standard)
+                    // Variable: 8x 01 04 07 2p FF where p is speed 0-7
+                    // 20 = Tele Stop, 2p = Tele Variable
+                    // 30 = Wide Stop, 3p = Wide Variable
+
+                    const speed = Math.min(this.zoomSpeed | 0, 7); // 0-7
+                    const cmd = dir > 0 ? (0x20 + speed) : (0x30 + speed);
+
+                    this.sendVisca([0x81, 0x01, 0x04, 0x07, cmd, 0xFF]);
+                } else if (this.track && this.capabilities && this.capabilities.zoom) {
+                    const settings = this.track.getSettings();
+                    const current = settings.zoom || 1;
+                    this.track.applyConstraints({
+                        advanced: [{ zoom: current + (dir * 10) }]
+                    }).catch(e => console.log('UVC Zoom fail', e));
+                }
+            }
+
+            stopZoom() {
+                if (this.writer) {
+                    // Zoom Stop: 81 01 04 07 00 FF
+                    this.sendVisca([0x81, 0x01, 0x04, 0x07, 0x00, 0xFF]);
+                }
+            }
+
+            home() {
+                if (this.writer) {
+                    // Home: 81 01 06 04 FF
+                    this.sendVisca([0x81, 0x01, 0x06, 0x04, 0xFF]);
+                }
             }
         }
 
-        /* ---------------- Serial / VISCA helpers ------------------ */
-        async function connectSerial() {
-            try {
-                const port = await navigator.serial.requestPort();
-                await port.open({ baudRate: 9600 });
-                writer = port.writable.getWriter();
-                alert('Serial connected');
-            } catch (err) {
-                alert('Serial connection failed: ' + err);
-            }
-        }
-        function visca(bytes) {
-            if (!writer) { alert('Serial not connected'); return; }
-            writer.write(new Uint8Array(bytes));
-        }
-        // --- Zoom step (no continuous run) ---
-        function serialZoomStep(dir /* 'tele' | 'wide' */) {
-            const start = dir === 'tele' ? 0x20 : 0x30; // Tele/Wide
-            visca([0x81, 0x01, 0x04, 0x07, start, 0xFF]);   // start zoom
-            setTimeout(() => visca([0x81, 0x01, 0x04, 0x07, 0x00, 0xFF]), 60); // stop after 60 ms
-        }
-        // --- Pan/Tilt pulse helpers ---
-        function serialPanStep(dir) { // dir: 0x01 R, 0x02 L
-            visca([0x81, 0x01, 0x06, 0x01, 0x10, 0x00, dir, 0x03, 0xFF]);
-            setTimeout(() => visca([0x81, 0x01, 0x06, 0x01, 0x00, 0x00, 0x03, 0x03, 0xFF]), 100);
-        }
-        function serialTiltStep(dir) { // dir: 0x01 U, 0x02 D
-            visca([0x81, 0x01, 0x06, 0x01, 0x00, 0x10, 0x03, dir, 0xFF]);
-            setTimeout(() => visca([0x81, 0x01, 0x06, 0x01, 0x00, 0x00, 0x03, 0x03, 0xFF]), 100);
-        }
+        const cameraManager = new CameraManager();
 
-        /* ---------------- Unified control ------------------------- */
-        function clamp(v, min, max) { return Math.min(max, Math.max(min, v)); }
-        function adjust(name, delta) {
-            // UVC first (absolute positioning)
-            if (caps?.[name]) {
-                const min = caps[name].min, max = caps[name].max;
-                const newVal = clamp(last[name] + delta, min, max);
-                track.applyConstraints({ advanced: [{ [name]: newVal }] }).catch(console.error);
-                last[name] = newVal;
-                return;
-            }
-            // Serial relative fallback
-            if (!writer) return; // silent when not connected
-            if (name === 'zoom') serialZoomStep(delta > 0 ? 'tele' : 'wide');
-            else if (name === 'pan') serialPanStep(delta > 0 ? 0x01 : 0x02);
-            else if (name === 'tilt') serialTiltStep(delta > 0 ? 0x01 : 0x02);
-        }
-
-        /* ---------------- Buttons ------------------------------- */
-        document.getElementById('serialConnect').addEventListener('click', connectSerial);
-
-        document.getElementById('zoomIn').addEventListener('click', () => adjust('zoom', 1));
-        document.getElementById('zoomOut').addEventListener('click', () => adjust('zoom', -1));
-
-        ['panLeft', 'panRight', 'tiltUp', 'tiltDown'].forEach(id => {
-            const cfg = {
-                panLeft: { axis: 'pan', delta: -5 },
-                panRight: { axis: 'pan', delta: 5 },
-                tiltUp: { axis: 'tilt', delta: 5 },
-                tiltDown: { axis: 'tilt', delta: -5 }
-            }[id];
-            let timer;
-            const btn = document.getElementById(id);
-            btn.addEventListener('mousedown', () => {
-                adjust(cfg.axis, cfg.delta);
-                timer = setInterval(() => adjust(cfg.axis, cfg.delta), 120);
-            });
-            btn.addEventListener('mouseup', () => clearInterval(timer));
-            btn.addEventListener('mouseleave', () => clearInterval(timer));
+        // Auto-attempt generic stream start on load (optional, but requested by "openCamera" in original)
+        window.addEventListener('load', () => {
+            cameraManager.populateCameraList({ autoSelect: true });
         });
 
-        /* ---------------- Hotkeys ------------------------------- */
-        const activeTimers = new Map();
-        const hotkeyMap = {
-            'ArrowLeft': { axis: 'pan', delta: -5, continuous: true },
-            'ArrowRight': { axis: 'pan', delta: 5, continuous: true },
-            'ArrowUp': { axis: 'tilt', delta: 5, continuous: true },
-            'ArrowDown': { axis: 'tilt', delta: -5, continuous: true },
-            '+': { axis: 'zoom', delta: 1, continuous: false },
-            '-': { axis: 'zoom', delta: -1, continuous: false }
-        };
-
-        document.addEventListener('keydown', e => {
-            const cfg = hotkeyMap[e.key];
-            if (!cfg) return;
-            if (cfg.continuous) {
-                if (activeTimers.has(e.key)) return;
-                adjust(cfg.axis, cfg.delta);
-                const id = setInterval(() => adjust(cfg.axis, cfg.delta), 120);
-                activeTimers.set(e.key, id);
-            } else {
-                adjust(cfg.axis, cfg.delta); // single step zoom
-            }
-        });
-
-        document.addEventListener('keyup', e => {
-            const id = activeTimers.get(e.key);
-            if (id) {
-                clearInterval(id);
-                activeTimers.delete(e.key);
-            }
-        });
-
-        window.addEventListener('blur', () => {
-            activeTimers.forEach(id => clearInterval(id));
-            activeTimers.clear();
-        });
-
-        openCamera();
     </script>
 </body>
 
